@@ -2,7 +2,7 @@
 
 #include <DataTypes/DataTypesNumber.h>
 #include <Columns/ColumnVector.h>
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Functions/FunctionHelpers.h>
 #include <IO/WriteHelpers.h>
 #include <ext/range.h>
@@ -24,7 +24,7 @@ struct FunctionBitTestMany : public IFunction
 {
 public:
     static constexpr auto name = Name::name;
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionBitTestMany>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionBitTestMany>(); }
 
     String getName() const override { return name; }
 
@@ -54,7 +54,7 @@ public:
         return std::make_shared<DataTypeUInt8>();
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t /*input_rows_count*/) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t /*input_rows_count*/) const override
     {
         const auto * value_col = arguments.front().column.get();
 
@@ -75,7 +75,7 @@ public:
 private:
     template <typename T>
     ColumnPtr execute(
-            ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type,
+            const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type,
             const IColumn * const value_col_untyped) const
     {
         if (const auto value_col = checkAndGetColumn<ColumnVector<T>>(value_col_untyped))

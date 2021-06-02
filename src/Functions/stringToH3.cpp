@@ -1,3 +1,9 @@
+#if !defined(ARCADIA_BUILD)
+#    include "config_functions.h"
+#endif
+
+#if USE_H3
+
 #include <Columns/ColumnString.h>
 #include <DataTypes/DataTypeString.h>
 #include <DataTypes/DataTypesNumber.h>
@@ -28,7 +34,7 @@ class FunctionStringToH3 : public IFunction
 public:
     static constexpr auto name = "stringToH3";
 
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionStringToH3>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionStringToH3>(); }
 
     std::string getName() const override { return name; }
 
@@ -46,7 +52,7 @@ public:
         return std::make_shared<DataTypeUInt64>();
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
     {
         const auto * col_hindex = arguments[0].column.get();
 
@@ -101,3 +107,5 @@ void registerFunctionStringToH3(FunctionFactory & factory)
 }
 
 }
+
+#endif

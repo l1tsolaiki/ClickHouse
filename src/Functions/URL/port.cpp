@@ -1,5 +1,5 @@
 #include <Functions/FunctionFactory.h>
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Common/StringUtils/StringUtils.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <Columns/ColumnsNumber.h>
@@ -21,7 +21,7 @@ namespace ErrorCodes
 struct FunctionPort : public IFunction
 {
     static constexpr auto name = "port";
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionPort>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionPort>(); }
 
     String getName() const override { return name; }
     bool isVariadic() const override { return true; }
@@ -48,7 +48,7 @@ struct FunctionPort : public IFunction
     }
 
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t) const override
     {
         UInt16 default_port = 0;
         if (arguments.size() == 2)

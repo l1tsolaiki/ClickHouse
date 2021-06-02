@@ -23,7 +23,7 @@ class FunctionArrayZip : public IFunction
 {
 public:
     static constexpr auto name = "arrayZip";
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionArrayZip>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionArrayZip>(); }
 
     String getName() const override
     {
@@ -55,7 +55,7 @@ public:
         return std::make_shared<DataTypeArray>(std::make_shared<DataTypeTuple>(arguments_types));
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
     {
         size_t num_arguments = arguments.size();
 

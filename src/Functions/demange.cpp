@@ -25,9 +25,9 @@ class FunctionDemangle : public IFunction
 {
 public:
     static constexpr auto name = "demangle";
-    static FunctionPtr create(const Context & context)
+    static FunctionPtr create(ContextConstPtr context)
     {
-        context.checkAccess(AccessType::demangle);
+        context->checkAccess(AccessType::demangle);
         return std::make_shared<FunctionDemangle>();
     }
 
@@ -61,7 +61,7 @@ public:
         return true;
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
     {
         const ColumnPtr & column = arguments[0].column;
         const ColumnString * column_concrete = checkAndGetColumn<ColumnString>(column.get());

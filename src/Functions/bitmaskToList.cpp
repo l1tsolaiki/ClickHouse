@@ -1,5 +1,5 @@
 #include <Functions/FunctionFactory.h>
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Columns/ColumnString.h>
 #include <Columns/ColumnVector.h>
 #include <DataTypes/DataTypeString.h>
@@ -30,7 +30,7 @@ class FunctionBitmaskToList : public IFunction
 {
 public:
     static constexpr auto name = "bitmaskToList";
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionBitmaskToList>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionBitmaskToList>(); }
 
     String getName() const override
     {
@@ -52,7 +52,7 @@ public:
 
     bool useDefaultImplementationForConstants() const override { return true; }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
     {
         ColumnPtr res;
         if (!((res = executeType<UInt8>(arguments))
@@ -91,7 +91,7 @@ private:
     }
 
     template <typename T>
-    ColumnPtr executeType(ColumnsWithTypeAndName & columns) const
+    ColumnPtr executeType(const ColumnsWithTypeAndName & columns) const
     {
         if (const ColumnVector<T> * col_from = checkAndGetColumn<ColumnVector<T>>(columns[0].column.get()))
         {

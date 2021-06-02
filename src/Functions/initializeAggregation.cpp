@@ -1,4 +1,4 @@
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Functions/FunctionFactory.h>
 #include <Functions/FunctionHelpers.h>
 #include <Columns/ColumnString.h>
@@ -9,7 +9,7 @@
 #include <AggregateFunctions/parseAggregateFunctionParameters.h>
 #include <Common/Arena.h>
 
-#include <ext/scope_guard.h>
+#include <ext/scope_guard_safe.h>
 
 
 namespace DB
@@ -29,7 +29,7 @@ class FunctionInitializeAggregation : public IFunction
 {
 public:
     static constexpr auto name = "initializeAggregation";
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionInitializeAggregation>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionInitializeAggregation>(); }
 
     String getName() const override { return name; }
 
@@ -41,7 +41,7 @@ public:
 
     DataTypePtr getReturnTypeImpl(const ColumnsWithTypeAndName & arguments) const override;
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override;
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override;
 
 private:
     mutable AggregateFunctionPtr aggregate_function;
@@ -87,7 +87,7 @@ DataTypePtr FunctionInitializeAggregation::getReturnTypeImpl(const ColumnsWithTy
 }
 
 
-ColumnPtr FunctionInitializeAggregation::executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const
+ColumnPtr FunctionInitializeAggregation::executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const
 {
     IAggregateFunction & agg_func = *aggregate_function;
     std::unique_ptr<Arena> arena = std::make_unique<Arena>();
@@ -132,7 +132,7 @@ ColumnPtr FunctionInitializeAggregation::executeImpl(ColumnsWithTypeAndName & ar
         }
     }
 
-    SCOPE_EXIT({
+    SCOPE_EXIT_MEMORY_SAFE({
         for (size_t i = 0; i < input_rows_count; ++i)
             agg_func.destroy(places[i]);
     });

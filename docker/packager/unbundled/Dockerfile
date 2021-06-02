@@ -21,6 +21,8 @@ RUN apt-get update \
         libboost-thread-dev \
         libboost-iostreams-dev \
         libboost-regex-dev \
+        libboost-context-dev \
+        libboost-coroutine-dev \
         zlib1g-dev \
         liblz4-dev \
         libdouble-conversion-dev \
@@ -33,9 +35,6 @@ RUN apt-get update \
         libjemalloc-dev \
         libmsgpack-dev \
         libcurl4-openssl-dev \
-        opencl-headers \
-        ocl-icd-libopencl1 \
-        intel-opencl-icd \
         unixodbc-dev \
         odbcinst \
         tzdata \
@@ -56,6 +55,7 @@ RUN apt-get update \
         libprotoc-dev \
         libgrpc++-dev \
         protobuf-compiler-grpc \
+        libc-ares-dev \
         rapidjson-dev \
         libsnappy-dev \
         libparquet-dev \
@@ -64,6 +64,8 @@ RUN apt-get update \
         libbz2-dev \
         libavro-dev \
         libfarmhash-dev \
+        librocksdb-dev \
+        libgflags-dev \
         libmysqlclient-dev \
         --yes --no-install-recommends
 

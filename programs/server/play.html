@@ -1,9 +1,10 @@
 <html> <!-- TODO If I write DOCTYPE HTML something changes but I don't know what. -->
 <head>
     <meta charset="UTF-8">
+    <link rel="icon" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1NCIgaGVpZ2h0PSI0OCIgdmlld0JveD0iMCAwIDkgOCI+PHN0eWxlPi5ve2ZpbGw6I2ZjMH0ucntmaWxsOnJlZH08L3N0eWxlPjxwYXRoIGQ9Ik0wLDcgaDEgdjEgaC0xIHoiIGNsYXNzPSJyIi8+PHBhdGggZD0iTTAsMCBoMSB2NyBoLTEgeiIgY2xhc3M9Im8iLz48cGF0aCBkPSJNMiwwIGgxIHY4IGgtMSB6IiBjbGFzcz0ibyIvPjxwYXRoIGQ9Ik00LDAgaDEgdjggaC0xIHoiIGNsYXNzPSJvIi8+PHBhdGggZD0iTTYsMCBoMSB2OCBoLTEgeiIgY2xhc3M9Im8iLz48cGF0aCBkPSJNOCwzLjI1IGgxIHYxLjUgaC0xIHoiIGNsYXNzPSJvIi8+PC9zdmc+">
     <title>ClickHouse Query</title>
 
-    <!-- Code style:
+    <!-- Code Style:
 
     Do not use any JavaScript or CSS frameworks or preprocessors.
     This HTML page should not require any build systems (node.js, npm, gulp, etc.)
@@ -16,6 +17,15 @@
     No unexpected changes in positions of elements while the page is loading.
     Navigation by keyboard should work.
     64-bit numbers must display correctly.
+
+    -->
+
+    <!-- Development Roadmap:
+
+    1. Support readonly servers.
+    Check if readonly = 1 (with SELECT FROM system.settings) to avoid sending settings. It can be done once on address/credentials change.
+    It can be done in background, e.g. wait 100 ms after address/credentials change and do the check.
+    Also it can provide visual indication that credentials are correct.
 
     -->
 
@@ -249,6 +259,22 @@
         {
             color: var(--null-color);
         }
+
+        #hourglass
+        {
+            display: none;
+            padding-left: 1rem;
+            font-size: 110%;
+            color: #888;
+        }
+
+        #check-mark
+        {
+            display: none;
+            padding-left: 1rem;
+            font-size: 110%;
+            color: #080;
+        }
     </style>
 </head>
 
@@ -261,7 +287,9 @@
     </div>
     <div id="run_div">
         <button class="shadow" id="run">Run</button>
-        <span class="hint">&nbsp;(Ctrl+Enter)</span>
+        <span class="hint">&nbsp;(Ctrl/Cmd+Enter)</span>
+        <span id="hourglass">⧗</span>
+        <span id="check-mark">✔</span>
         <span id="stats"></span>
         <span id="toggle-dark">🌑</span><span id="toggle-light">🌞</span>
     </div>
@@ -275,50 +303,120 @@
 
 <script type="text/javascript">
 
+    /// Incremental request number. When response is received,
+    /// if it's request number does not equal to the current request number, response will be ignored.
+    /// This is to avoid race conditions.
+    let request_num = 0;
+
+    /// Save query in history only if it is different.
+    let previous_query = '';
+
     /// Substitute the address of the server where the page is served.
     if (location.protocol != 'file:') {
         document.getElementById('url').value = location.origin;
     }
 
-    function post()
+    /// Substitute user name if it's specified in the query string
+    let user_from_url = (new URL(window.location)).searchParams.get('user');
+    if (user_from_url) {
+        document.getElementById('user').value = user_from_url;
+    }
+
+    function postImpl(posted_request_num, query)
     {
-        /// TODO: Avoid race condition on subsequent requests when responses may come out of order.
         /// TODO: Check if URL already contains query string (append parameters).
 
-        var url = document.getElementById('url').value +
+        let user = document.getElementById('user').value;
+        let password = document.getElementById('password').value;
+
+        let url = document.getElementById('url').value +
             /// Ask server to allow cross-domain requests.
             '?add_http_cors_header=1' +
-            '&user=' + encodeURIComponent(document.getElementById('user').value) +
-            '&password=' + encodeURIComponent(document.getElementById('password').value) +
+            '&user=' + encodeURIComponent(user) +
+            '&password=' + encodeURIComponent(password) +
             '&default_format=JSONCompact' +
             /// Safety settings to prevent results that browser cannot display.
             '&max_result_rows=1000&max_result_bytes=10000000&result_overflow_mode=break';
 
-        var query = document.getElementById('query').value;
-        var xhr = new XMLHttpRequest;
+        let xhr = new XMLHttpRequest;
 
         xhr.open('POST', url, true);
-        xhr.send(query);
 
         xhr.onreadystatechange = function()
         {
-            if (this.readyState === XMLHttpRequest.DONE) {
-                if (this.status === 200) {
-                    var json;
-                    try { json = JSON.parse(this.response); } catch (e) {}
-                    if (json !== undefined && json.statistics !== undefined) {
-                        renderResult(json);
+            if (posted_request_num != request_num) {
+                return;
+            } else if (this.readyState === XMLHttpRequest.DONE) {
+                renderResponse(this.status, this.response);
+
+                /// The query is saved in browser history (in state JSON object)
+                /// as well as in URL fragment identifier.
+                if (query != previous_query) {
+                    let state = {
+                        query: query,
+                        status: this.status,
+                        response: this.response.length > 100000 ? null : this.response  /// Lower than the browser's limit.
+                    };
+                    let title = "ClickHouse Query: " + query;
+                    let url = window.location.pathname + '?user=' + encodeURIComponent(user) + '#' + window.btoa(query);
+                    if (previous_query == '') {
+                        history.replaceState(state, title, url);
                     } else {
-                        renderUnparsedResult(this.response);
+                        history.pushState(state, title, url);
                     }
-                } else {
-                    /// TODO: Proper rendering of network errors.
-                    renderError(this.response);
+                    document.title = title;
+                    previous_query = query;
                 }
             } else {
                 //console.log(this);
             }
         }
+
+        document.getElementById('check-mark').style.display = 'none';
+        document.getElementById('hourglass').style.display = 'inline';
+
+        xhr.send(query);
+    }
+
+    function renderResponse(status, response) {
+        document.getElementById('hourglass').style.display = 'none';
+
+        if (status === 200) {
+            let json;
+            try { json = JSON.parse(response); } catch (e) {}
+            if (json !== undefined && json.statistics !== undefined) {
+                renderResult(json);
+            } else {
+                renderUnparsedResult(response);
+            }
+            document.getElementById('check-mark').style.display = 'inline';
+        } else {
+            /// TODO: Proper rendering of network errors.
+            renderError(response);
+        }
+    }
+
+    window.onpopstate = function(event) {
+        if (!event.state) {
+            return;
+        }
+        document.getElementById('query').value = event.state.query;
+        if (!event.state.response) {
+            clear();
+            return;
+        }
+        renderResponse(event.state.status, event.state.response);
+    };
+
+    if (window.location.hash) {
+        document.getElementById('query').value = window.atob(window.location.hash.substr(1));
+    }
+
+    function post()
+    {
+        ++request_num;
+        let query = document.getElementById('query').value;
+        postImpl(request_num, query);
     }
 
     document.getElementById('run').onclick = function()
@@ -326,17 +424,17 @@
         post();
     }
 
-    document.getElementById('query').onkeypress = function(event)
+    document.onkeydown = function(event)
     {
         /// Firefox has code 13 for Enter and Chromium has code 10.
-        if (event.ctrlKey && (event.charCode == 13 || event.charCode == 10)) {
+        if ((event.metaKey || event.ctrlKey) && (event.keyCode == 13 || event.keyCode == 10)) {
             post();
         }
     }
 
     function clear()
     {
-        var table = document.getElementById('data-table');
+        let table = document.getElementById('data-table');
         while (table.firstChild) {
             table.removeChild(table.lastChild);
         }
@@ -348,6 +446,9 @@
         document.getElementById('error').style.display = 'none';
 
         document.getElementById('stats').innerText = '';
+
+        document.getElementById('hourglass').style.display = 'none';
+        document.getElementById('check-mark').style.display = 'none';
     }
 
     function renderResult(response)
@@ -355,33 +456,45 @@
         //console.log(response);
         clear();
 
-        var stats = document.getElementById('stats');
+        let stats = document.getElementById('stats');
         stats.innerText = 'Elapsed: ' + response.statistics.elapsed.toFixed(3) + " sec, read " + response.statistics.rows_read + " rows.";
 
-        var thead = document.createElement('thead');
-        for (var idx in response.meta) {
-            var th = document.createElement('th');
-            var name = document.createTextNode(response.meta[idx].name);
+        let thead = document.createElement('thead');
+        for (let idx in response.meta) {
+            let th = document.createElement('th');
+            let name = document.createTextNode(response.meta[idx].name);
             th.appendChild(name);
             thead.appendChild(th);
         }
 
         /// To prevent hanging the browser, limit the number of cells in a table.
         /// It's important to have the limit on number of cells, not just rows, because tables may be wide or narrow.
-        var max_rows = 10000 / response.meta.length;
-        var row_num = 0;
+        let max_rows = 10000 / response.meta.length;
+        let row_num = 0;
 
-        var tbody = document.createElement('tbody');
-        for (var row_idx in response.data) {
-            var tr = document.createElement('tr');
-            for (var col_idx in response.data[row_idx]) {
-                var td = document.createElement('td');
-                var cell = response.data[row_idx][col_idx];
-                var is_null = (cell === null);
-                var content = document.createTextNode(is_null ? 'ᴺᵁᴸᴸ' : cell);
-                td.appendChild(content);
-                /// TODO: Execute regexp only once for each column.
-                td.className = response.meta[col_idx].type.match(/^(U?Int|Decimal|Float)/) ? 'right' : 'left';
+        let column_classes = response.meta.map(elem => elem.type.match(/^(U?Int|Decimal|Float)/) ? 'right' : 'left');
+
+        let tbody = document.createElement('tbody');
+        for (let row_idx in response.data) {
+            let tr = document.createElement('tr');
+            for (let col_idx in response.data[row_idx]) {
+                let td = document.createElement('td');
+                let cell = response.data[row_idx][col_idx];
+
+                let is_null = (cell === null);
+
+                /// Test: SELECT number, toString(number) AS str, number % 2 ? number : NULL AS nullable, range(number) AS arr, CAST((['hello', 'world'], [number, number % 2]) AS Map(String, UInt64)) AS map FROM numbers(10)
+                let text;
+                if (is_null) {
+                    text = 'ᴺᵁᴸᴸ';
+                } else if (typeof(cell) === 'object') {
+                    text = JSON.stringify(cell);
+                } else {
+                    text = cell;
+                }
+
+                td.appendChild(document.createTextNode(text));
+                td.className = column_classes[col_idx];
                 if (is_null) {
                     td.className += ' null';
                 }
@@ -395,7 +508,7 @@
             }
         }
 
-        var table = document.getElementById('data-table');
+        let table = document.getElementById('data-table');
         table.appendChild(thead);
         table.appendChild(tbody);
     }
@@ -404,7 +517,7 @@
     function renderUnparsedResult(response)
     {
         clear();
-        var data = document.getElementById('data-unparsed')
+        let data = document.getElementById('data-unparsed')
 
         if (response === '') {
             /// TODO: Fade or remove previous result when new request will be performed.
@@ -419,7 +532,7 @@
     function renderError(response)
     {
         clear();
-        document.getElementById('error').innerText = response;
+        document.getElementById('error').innerText = response ? response : "No response.";
         document.getElementById('error').style.display = 'block';
     }
 
@@ -430,9 +543,26 @@
     }
 
     /// The choice of color theme is saved in browser.
-    var theme = window.localStorage.getItem('theme');
+    let theme = window.localStorage.getItem('theme');
     if (theme) {
         setColorTheme(theme);
+    } else {
+        /// Obtain system-level user preference
+        let media_query_list = window.matchMedia('prefers-color-scheme: dark')
+
+        if (media_query_list.matches) {
+            /// Set without saving to localstorage
+            document.documentElement.setAttribute('data-theme', 'dark');
+        }
+
+        /// There is a rumor that on some computers, the theme is changing automatically on day/night.
+        media_query_list.addEventListener('change', function(e) {
+            if (e.matches) {
+                document.documentElement.setAttribute('data-theme', 'dark');
+            } else {
+                document.documentElement.setAttribute('data-theme', 'light');
+            }
+        });
     }
 
     document.getElementById('toggle-light').onclick = function()

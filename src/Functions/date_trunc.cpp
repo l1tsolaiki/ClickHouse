@@ -25,9 +25,9 @@ class FunctionDateTrunc : public IFunction
 public:
     static constexpr auto name = "date_trunc";
 
-    explicit FunctionDateTrunc(const Context & context_) : context(context_) {}
+    explicit FunctionDateTrunc(ContextConstPtr context_) : context(context_) {}
 
-    static FunctionPtr create(const Context & context) { return std::make_shared<FunctionDateTrunc>(context); }
+    static FunctionPtr create(ContextConstPtr context) { return std::make_shared<FunctionDateTrunc>(context); }
 
     String getName() const override { return name; }
 
@@ -117,7 +117,7 @@ public:
     bool useDefaultImplementationForConstants() const override { return true; }
     ColumnNumbers getArgumentsThatAreAlwaysConstant() const override { return {0, 2}; }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
     {
         ColumnsWithTypeAndName temp_columns(arguments.size());
         temp_columns[0] = arguments[1];
@@ -146,7 +146,7 @@ public:
     }
 
 private:
-    const Context & context;
+    ContextConstPtr context;
     mutable IntervalKind::Kind datepart_kind = IntervalKind::Kind::Second;
 };
 

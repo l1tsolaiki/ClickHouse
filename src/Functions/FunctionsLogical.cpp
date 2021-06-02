@@ -509,7 +509,7 @@ DataTypePtr FunctionAnyArityLogical<Impl, Name>::getReturnTypeImpl(const DataTyp
 
 template <typename Impl, typename Name>
 ColumnPtr FunctionAnyArityLogical<Impl, Name>::executeImpl(
-    ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const
+    const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const
 {
     ColumnRawPtrs args_in;
     for (const auto & arg_index : arguments)
@@ -521,6 +521,70 @@ ColumnPtr FunctionAnyArityLogical<Impl, Name>::executeImpl(
         return basicExecuteImpl<Impl>(std::move(args_in), input_rows_count);
 }
 
+template <typename Impl, typename Name>
+ColumnPtr FunctionAnyArityLogical<Impl, Name>::getConstantResultForNonConstArguments(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type) const
+{
+    /** Try to perform optimization for saturable functions (AndFunction, OrFunction) in case some arguments are
+      * constants.
+      * If function is not saturable (XorFunction) we cannot perform such optimization.
+      * If function is AndFunction and in arguments there is constant false, result is false.
+      * If function is OrFunction and in arguments there is constant true, result is true.
+      */
+    if constexpr (!Impl::isSaturable())
+        return nullptr;
+
+    bool has_true_constant = false;
+    bool has_false_constant = false;
+
+    for (const auto & argument : arguments)
+    {
+        ColumnPtr column = argument.column;
+
+        if (!column || !isColumnConst(*column))
+            continue;
+
+        DataTypePtr non_nullable_type = removeNullable(argument.type);
+        TypeIndex data_type_index = non_nullable_type->getTypeId();
+
+        if (!isNativeNumber(data_type_index))
+            continue;
+
+        const ColumnConst * const_column = static_cast<const ColumnConst *>(column.get());
+
+        Field constant_field_value = const_column->getField();
+        if (constant_field_value.isNull())
+            continue;
+
+        auto field_type = constant_field_value.getType();
+
+        bool constant_value_bool = false;
+
+        if (field_type == Field::Types::Float64)
+            constant_value_bool = static_cast<bool>(constant_field_value.get<Float64>());
+        else if (field_type == Field::Types::Int64)
+            constant_value_bool = static_cast<bool>(constant_field_value.get<Int64>());
+        else if (field_type == Field::Types::UInt64)
+            constant_value_bool = static_cast<bool>(constant_field_value.get<UInt64>());
+
+        has_true_constant = has_true_constant || constant_value_bool;
+        has_false_constant = has_false_constant || !constant_value_bool;
+    }
+
+    ColumnPtr result_column;
+
+    if constexpr (std::is_same_v<Impl, AndImpl>)
+    {
+        if (has_false_constant)
+            result_type->createColumnConst(0, static_cast<UInt8>(false));
+    }
+    else if constexpr (std::is_same_v<Impl, OrImpl>)
+    {
+        if (has_true_constant)
+            result_type->createColumnConst(0, static_cast<UInt8>(true));
+    }
+
+    return result_column;
+}
 
 template <typename A, typename Op>
 struct UnaryOperationImpl
@@ -550,7 +614,7 @@ DataTypePtr FunctionUnaryLogical<Impl, Name>::getReturnTypeImpl(const DataTypes 
 }
 
 template <template <typename> class Impl, typename T>
-ColumnPtr functionUnaryExecuteType(ColumnsWithTypeAndName & arguments)
+ColumnPtr functionUnaryExecuteType(const ColumnsWithTypeAndName & arguments)
 {
     if (auto col = checkAndGetColumn<ColumnVector<T>>(arguments[0].column.get()))
     {
@@ -567,7 +631,7 @@ ColumnPtr functionUnaryExecuteType(ColumnsWithTypeAndName & arguments)
 }
 
 template <template <typename> class Impl, typename Name>
-ColumnPtr FunctionUnaryLogical<Impl, Name>::executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const
+ColumnPtr FunctionUnaryLogical<Impl, Name>::executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const
 {
     ColumnPtr res;
     if (!((res = functionUnaryExecuteType<Impl, UInt8>(arguments))

@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Core/AccurateComparison.h>
 #include <Functions/DummyJSONParser.h>
 #include <Functions/SimdJSONParser.h>
@@ -25,6 +25,7 @@
 #include <DataTypes/DataTypeTuple.h>
 #include <Interpreters/Context.h>
 #include <ext/range.h>
+#include <type_traits>
 #include <boost/tti/has_member_function.hpp>
 
 #if !defined(ARCADIA_BUILD)
@@ -55,7 +56,7 @@ public:
     class Executor
     {
     public:
-        static ColumnPtr run(ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count)
+        static ColumnPtr run(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count)
         {
             MutableColumnPtr to{result_type->createColumn()};
             to->reserve(input_rows_count);
@@ -166,7 +167,7 @@ private:
         String key;
     };
 
-    static std::vector<Move> prepareMoves(const char * function_name, ColumnsWithTypeAndName & columns, size_t first_index_argument, size_t num_index_arguments);
+    static std::vector<Move> prepareMoves(const char * function_name, const ColumnsWithTypeAndName & columns, size_t first_index_argument, size_t num_index_arguments);
 
     /// Performs moves of types MoveType::Index and MoveType::ConstIndex.
     template <typename JSONParser>
@@ -269,11 +270,11 @@ private:
 
 
 template <typename Name, template<typename> typename Impl>
-class FunctionJSON : public IFunction
+class FunctionJSON : public IFunction, WithConstContext
 {
 public:
-    static FunctionPtr create(const Context & context_) { return std::make_shared<FunctionJSON>(context_); }
-    FunctionJSON(const Context & context_) : context(context_) {}
+    static FunctionPtr create(ContextConstPtr context_) { return std::make_shared<FunctionJSON>(context_); }
+    FunctionJSON(ContextConstPtr context_) : WithConstContext(context_) {}
 
     static constexpr auto name = Name::name;
     String getName() const override { return Name::name; }
@@ -286,11 +287,11 @@ public:
         return Impl<DummyJSONParser>::getReturnType(Name::name, arguments);
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
     {
         /// Choose JSONParser.
 #if USE_SIMDJSON
-        if (context.getSettingsRef().allow_simdjson)
+        if (getContext()->getSettingsRef().allow_simdjson)
             return FunctionJSONHelpers::Executor<Name, Impl, SimdJSONParser>::run(arguments, result_type, input_rows_count);
 #endif
 
@@ -300,9 +301,6 @@ public:
         return FunctionJSONHelpers::Executor<Name, Impl, DummyJSONParser>::run(arguments, result_type, input_rows_count);
 #endif
     }
-
-private:
-    const Context & context;
 };
 
 
@@ -507,11 +505,20 @@ public:
         }
         else if (element.isDouble())
         {
-            if (!accurate::convertNumeric(element.getDouble(), value))
+            if constexpr (std::is_floating_point_v<NumberType>)
+            {
+                /// We permit inaccurate conversion of double to float.
+                /// Example: double 0.1 from JSON is not representable in float.
+                /// But it will be more convenient for user to perform conversion.
+                value = element.getDouble();
+            }
+            else if (!accurate::convertNumeric(element.getDouble(), value))
                 return false;
         }
         else if (element.isBool() && is_integer_v<NumberType> && convert_bool_to_integer)
+        {
             value = static_cast<NumberType>(element.getBool());
+        }
         else
             return false;
 
@@ -603,8 +610,8 @@ struct JSONExtractTree
     class Node
     {
     public:
-        Node() {}
-        virtual ~Node() {}
+        Node() = default;
+        virtual ~Node() = default;
         virtual bool insertResultToColumn(IColumn &, const Element &) = 0;
     };
 

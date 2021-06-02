@@ -39,7 +39,7 @@
 #include <Columns/ColumnFixedString.h>
 #include <Columns/ColumnArray.h>
 #include <Columns/ColumnTuple.h>
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Functions/FunctionHelpers.h>
 #include <Functions/TargetSpecific.h>
 #include <Functions/PerformanceAdaptors.h>
@@ -440,6 +440,18 @@ struct ImplCityHash64
 };
 
 // see farmhash.h for definition of NAMESPACE_FOR_HASH_FUNCTIONS
+struct ImplFarmFingerprint64
+{
+    static constexpr auto name = "farmFingerprint64";
+    using ReturnType = UInt64;
+    using uint128_t = NAMESPACE_FOR_HASH_FUNCTIONS::uint128_t;
+
+    static auto combineHashes(UInt64 h1, UInt64 h2) { return NAMESPACE_FOR_HASH_FUNCTIONS::Fingerprint(uint128_t(h1, h2)); }
+    static auto apply(const char * s, const size_t len) { return NAMESPACE_FOR_HASH_FUNCTIONS::Fingerprint64(s, len); }
+    static constexpr bool use_int_hash_for_pods = true;
+};
+
+// see farmhash.h for definition of NAMESPACE_FOR_HASH_FUNCTIONS
 struct ImplFarmHash64
 {
     static constexpr auto name = "farmHash64";
@@ -523,7 +535,7 @@ class FunctionStringHashFixedString : public IFunction
 {
 public:
     static constexpr auto name = Impl::name;
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionStringHashFixedString>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionStringHashFixedString>(); }
 
     String getName() const override
     {
@@ -543,7 +555,7 @@ public:
 
     bool useDefaultImplementationForConstants() const override { return true; }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
     {
         if (const ColumnString * col_from = checkAndGetColumn<ColumnString>(arguments[0].column.get()))
         {
@@ -604,7 +616,7 @@ private:
     using ToType = typename Impl::ReturnType;
 
     template <typename FromType>
-    ColumnPtr executeType(ColumnsWithTypeAndName & arguments) const
+    ColumnPtr executeType(const ColumnsWithTypeAndName & arguments) const
     {
         using ColVecType = std::conditional_t<IsDecimalNumber<FromType>, ColumnDecimal<FromType>, ColumnVector<FromType>>;
 
@@ -647,7 +659,7 @@ public:
 
     bool useDefaultImplementationForConstants() const override { return true; }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
     {
         const IDataType * from_type = arguments[0].type.get();
         WhichDataType which(from_type);
@@ -688,7 +700,7 @@ template <typename Impl, typename Name>
 class FunctionIntHash : public TargetSpecific::Default::FunctionIntHash<Impl, Name>
 {
 public:
-    explicit FunctionIntHash(const Context & context) : selector(context)
+    explicit FunctionIntHash(ContextConstPtr context) : selector(context)
     {
         selector.registerImplementation<TargetArch::Default,
             TargetSpecific::Default::FunctionIntHash<Impl, Name>>();
@@ -701,12 +713,12 @@ public:
     #endif
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
     {
         return selector.selectAndExecute(arguments, result_type, input_rows_count);
     }
 
-    static FunctionPtr create(const Context & context)
+    static FunctionPtr create(ContextConstPtr context)
     {
         return std::make_shared<FunctionIntHash>(context);
     }
@@ -794,16 +806,7 @@ private:
             size_t size = vec_from.size();
             for (size_t i = 0; i < size; ++i)
             {
-                ToType h;
-                if constexpr (OverBigInt<FromType>)
-                {
-                    using NativeT = typename NativeType<FromType>::Type;
-
-                    std::string buffer = BigInt<NativeT>::serialize(vec_from[i]);
-                    h = Impl::apply(buffer.data(), buffer.size());
-                }
-                else
-                    h = Impl::apply(reinterpret_cast<const char *>(&vec_from[i]), sizeof(vec_from[i]));
+                ToType h = Impl::apply(reinterpret_cast<const char *>(&vec_from[i]), sizeof(vec_from[i]));
 
                 if constexpr (first)
                     vec_to[i] = h;
@@ -815,16 +818,7 @@ private:
         {
             auto value = col_from_const->template getValue<FromType>();
 
-            ToType h;
-            if constexpr (OverBigInt<FromType>)
-            {
-                using NativeT = typename NativeType<FromType>::Type;
-
-                std::string buffer = BigInt<NativeT>::serialize(value);
-                h = Impl::apply(buffer.data(), buffer.size());
-            }
-            else
-                h = Impl::apply(reinterpret_cast<const char *>(&value), sizeof(value));
+            ToType h = Impl::apply(reinterpret_cast<const char *>(&value), sizeof(value));
 
             size_t size = vec_to.size();
             if constexpr (first)
@@ -979,7 +973,7 @@ private:
         else if (which.isUInt16()) executeIntType<UInt16, first>(icolumn, vec_to);
         else if (which.isUInt32()) executeIntType<UInt32, first>(icolumn, vec_to);
         else if (which.isUInt64()) executeIntType<UInt64, first>(icolumn, vec_to);
-        else if (which.isUInt128() || which.isUUID()) executeBigIntType<UInt128, first>(icolumn, vec_to);
+        else if (which.isUInt128()) executeBigIntType<UInt128, first>(icolumn, vec_to);
         else if (which.isUInt256()) executeBigIntType<UInt256, first>(icolumn, vec_to);
         else if (which.isInt8()) executeIntType<Int8, first>(icolumn, vec_to);
         else if (which.isInt16()) executeIntType<Int16, first>(icolumn, vec_to);
@@ -987,6 +981,7 @@ private:
         else if (which.isInt64()) executeIntType<Int64, first>(icolumn, vec_to);
         else if (which.isInt128()) executeBigIntType<Int128, first>(icolumn, vec_to);
         else if (which.isInt256()) executeBigIntType<Int256, first>(icolumn, vec_to);
+        else if (which.isUUID()) executeBigIntType<UUID, first>(icolumn, vec_to);
         else if (which.isEnum8()) executeIntType<Int8, first>(icolumn, vec_to);
         else if (which.isEnum16()) executeIntType<Int16, first>(icolumn, vec_to);
         else if (which.isDate()) executeIntType<UInt16, first>(icolumn, vec_to);
@@ -1053,7 +1048,7 @@ public:
         return std::make_shared<DataTypeNumber<ToType>>();
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
     {
         size_t rows = input_rows_count;
         auto col_to = ColumnVector<ToType>::create(rows);
@@ -1082,7 +1077,7 @@ template <typename Impl>
 class FunctionAnyHash : public TargetSpecific::Default::FunctionAnyHash<Impl>
 {
 public:
-    explicit FunctionAnyHash(const Context & context) : selector(context)
+    explicit FunctionAnyHash(ContextConstPtr context) : selector(context)
     {
         selector.registerImplementation<TargetArch::Default,
             TargetSpecific::Default::FunctionAnyHash<Impl>>();
@@ -1095,12 +1090,12 @@ public:
     #endif
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
     {
         return selector.selectAndExecute(arguments, result_type, input_rows_count);
     }
 
-    static FunctionPtr create(const Context & context)
+    static FunctionPtr create(ContextConstPtr context)
     {
         return std::make_shared<FunctionAnyHash>(context);
     }
@@ -1187,7 +1182,7 @@ class FunctionURLHash : public IFunction
 {
 public:
     static constexpr auto name = "URLHash";
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionURLHash>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionURLHash>(); }
 
     String getName() const override { return name; }
 
@@ -1218,7 +1213,7 @@ public:
     bool useDefaultImplementationForConstants() const override { return true; }
     ColumnNumbers getArgumentsThatAreAlwaysConstant() const override { return {1}; }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
     {
         const auto arg_count = arguments.size();
 
@@ -1231,7 +1226,7 @@ public:
     }
 
 private:
-    ColumnPtr executeSingleArg(ColumnsWithTypeAndName & arguments) const
+    ColumnPtr executeSingleArg(const ColumnsWithTypeAndName & arguments) const
     {
         const auto * col_untyped = arguments.front().column.get();
 
@@ -1261,7 +1256,7 @@ private:
                 " of argument of function " + getName(), ErrorCodes::ILLEGAL_COLUMN};
     }
 
-    ColumnPtr executeTwoArgs(ColumnsWithTypeAndName & arguments) const
+    ColumnPtr executeTwoArgs(const ColumnsWithTypeAndName & arguments) const
     {
         const auto * level_col = arguments.back().column.get();
         if (!isColumnConst(*level_col))
@@ -1316,6 +1311,7 @@ using FunctionSHA256 = FunctionStringHashFixedString<SHA256Impl>;
 #endif
 using FunctionSipHash128 = FunctionStringHashFixedString<SipHash128Impl>;
 using FunctionCityHash64 = FunctionAnyHash<ImplCityHash64>;
+using FunctionFarmFingerprint64 = FunctionAnyHash<ImplFarmFingerprint64>;
 using FunctionFarmHash64 = FunctionAnyHash<ImplFarmHash64>;
 using FunctionMetroHash64 = FunctionAnyHash<ImplMetroHash64>;
 

@@ -27,7 +27,7 @@ class FunctionGeohashDecode : public IFunction
 {
 public:
     static constexpr auto name = "geohashDecode";
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionGeohashDecode>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionGeohashDecode>(); }
 
     String getName() const override
     {
@@ -75,7 +75,7 @@ public:
         return true;
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
     {
         const IColumn * encoded = arguments[0].column.get();
         ColumnPtr res_column;

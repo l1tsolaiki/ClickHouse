@@ -1,4 +1,6 @@
 # This file is generated automatically, do not edit. See 'ya.make.in' and use 'utils/generate-ya-make' to regenerate it.
+OWNER(g:clickhouse)
+
 LIBRARY()
 
 PEERDIR(
@@ -9,9 +11,11 @@ PEERDIR(
 
 SRCS(
     Connection.cpp
+    ConnectionEstablisher.cpp
     ConnectionPoolWithFailover.cpp
+    HedgedConnections.cpp
+    HedgedConnectionsFactory.cpp
     MultiplexedConnections.cpp
-    TimeoutSetter.cpp
 
 )
 

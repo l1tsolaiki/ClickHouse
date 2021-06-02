@@ -1,3 +1,9 @@
+#if !defined(ARCADIA_BUILD)
+#    include "config_functions.h"
+#endif
+
+#if USE_H3
+
 #include <Columns/ColumnsNumber.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <Functions/FunctionFactory.h>
@@ -26,7 +32,7 @@ class FunctionH3HexAreaM2 : public IFunction
 public:
     static constexpr auto name = "h3HexAreaM2";
 
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionH3HexAreaM2>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionH3HexAreaM2>(); }
 
     std::string getName() const override { return name; }
 
@@ -44,7 +50,7 @@ public:
         return std::make_shared<DataTypeFloat64>();
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
     {
         const auto * col_hindex = arguments[0].column.get();
 
@@ -76,3 +82,5 @@ void registerFunctionH3HexAreaM2(FunctionFactory & factory)
 }
 
 }
+
+#endif

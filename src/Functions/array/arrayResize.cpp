@@ -1,4 +1,4 @@
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Functions/FunctionFactory.h>
 #include <Functions/GatherUtils/GatherUtils.h>
 #include <DataTypes/DataTypeArray.h>
@@ -25,7 +25,7 @@ class FunctionArrayResize : public IFunction
 {
 public:
     static constexpr auto name = "arrayResize";
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionArrayResize>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionArrayResize>(); }
 
     String getName() const override { return name; }
 
@@ -63,7 +63,7 @@ public:
             return std::make_shared<DataTypeArray>(getLeastSupertype({array_type->getNestedType(), arguments[2]}));
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr & return_type, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & return_type, size_t input_rows_count) const override
     {
         if (return_type->onlyNull())
             return return_type->createColumnConstWithDefaultValue(input_rows_count);

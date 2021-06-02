@@ -1,3 +1,9 @@
+#if !defined(ARCADIA_BUILD)
+#    include "config_functions.h"
+#endif
+
+#if USE_H3
+
 #include <Columns/ColumnsNumber.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <Functions/FunctionFactory.h>
@@ -26,7 +32,7 @@ class FunctionH3ToParent : public IFunction
 public:
     static constexpr auto name = "h3ToParent";
 
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionH3ToParent>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionH3ToParent>(); }
 
     std::string getName() const override { return name; }
 
@@ -50,7 +56,7 @@ public:
         return std::make_shared<DataTypeUInt64>();
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
     {
         const auto * col_hindex = arguments[0].column.get();
         const auto * col_resolution = arguments[1].column.get();
@@ -85,3 +91,5 @@ void registerFunctionH3ToParent(FunctionFactory & factory)
 }
 
 }
+
+#endif

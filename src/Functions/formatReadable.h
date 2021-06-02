@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Functions/FunctionHelpers.h>
 #include <Columns/ColumnString.h>
 #include <Columns/ColumnVector.h>
@@ -28,7 +28,7 @@ class FunctionFormatReadable : public IFunction
 {
 public:
     static constexpr auto name = Impl::name;
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionFormatReadable<Impl>>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionFormatReadable<Impl>>(); }
 
     String getName() const override
     {
@@ -49,7 +49,7 @@ public:
 
     bool useDefaultImplementationForConstants() const override { return true; }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
     {
         ColumnPtr res;
         if (!((res = executeType<UInt8>(arguments))
@@ -71,7 +71,7 @@ public:
 
 private:
     template <typename T>
-    ColumnPtr executeType(ColumnsWithTypeAndName & arguments) const
+    ColumnPtr executeType(const ColumnsWithTypeAndName & arguments) const
     {
         if (const ColumnVector<T> * col_from = checkAndGetColumn<ColumnVector<T>>(arguments[0].column.get()))
         {

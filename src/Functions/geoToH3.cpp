@@ -1,9 +1,15 @@
+#if !defined(ARCADIA_BUILD)
+#    include "config_functions.h"
+#endif
+
+#if USE_H3
+
 #include <array>
 #include <math.h>
 #include <Columns/ColumnsNumber.h>
 #include <DataTypes/DataTypesNumber.h>
 #include <Functions/FunctionFactory.h>
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Common/typeid_cast.h>
 #include <ext/range.h>
 
@@ -27,7 +33,7 @@ class FunctionGeoToH3 : public IFunction
 public:
     static constexpr auto name = "geoToH3";
 
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionGeoToH3>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionGeoToH3>(); }
 
     std::string getName() const override { return name; }
 
@@ -57,7 +63,7 @@ public:
         return std::make_shared<DataTypeUInt64>();
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t input_rows_count) const override
     {
         const auto * col_lon = arguments[0].column.get();
         const auto * col_lat = arguments[1].column.get();
@@ -94,3 +100,5 @@ void registerFunctionGeoToH3(FunctionFactory & factory)
 }
 
 }
+
+#endif

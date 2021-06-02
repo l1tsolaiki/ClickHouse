@@ -1,5 +1,5 @@
 #pragma once
-#include <Functions/IFunctionImpl.h>
+#include <Functions/IFunction.h>
 #include <Functions/FunctionHelpers.h>
 #include <Columns/ColumnsNumber.h>
 #include <Columns/ColumnNullable.h>
@@ -46,7 +46,7 @@ private:
     /// It is possible to track value from previous columns, to calculate continuously across all columnss. Not implemented.
 
     template <typename Src, typename Dst>
-    static void process(const PaddedPODArray<Src> & src, PaddedPODArray<Dst> & dst, const NullMap * null_map)
+    static NO_SANITIZE_UNDEFINED void process(const PaddedPODArray<Src> & src, PaddedPODArray<Dst> & dst, const NullMap * null_map)
     {
         size_t size = src.size();
         dst.resize(size);
@@ -76,6 +76,7 @@ private:
             else
             {
                 auto cur = src[i];
+                /// Overflow is Ok.
                 dst[i] = static_cast<Dst>(cur) - prev;
                 prev = cur;
             }
@@ -123,7 +124,7 @@ private:
 public:
     static constexpr auto name = FunctionRunningDifferenceName<is_first_line_zero>::name;
 
-    static FunctionPtr create(const Context &)
+    static FunctionPtr create(ContextConstPtr)
     {
         return std::make_shared<FunctionRunningDifferenceImpl<is_first_line_zero>>();
     }
@@ -165,9 +166,9 @@ public:
         return res;
     }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr & result_type, size_t input_rows_count) const override
     {
-        auto & src = arguments.at(0);
+        const auto & src = arguments.at(0);
 
         /// When column is constant, its difference is zero.
         if (isColumnConst(*src.column))

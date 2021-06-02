@@ -162,7 +162,7 @@ private:
 
 public:
     static constexpr auto name = "convertCharset";
-    static FunctionPtr create(const Context &) { return std::make_shared<FunctionConvertCharset>(); }
+    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionConvertCharset>(); }
 
     String getName() const override
     {
@@ -184,7 +184,7 @@ public:
     bool useDefaultImplementationForConstants() const override { return true; }
     ColumnNumbers getArgumentsThatAreAlwaysConstant() const override { return {1, 2}; }
 
-    ColumnPtr executeImpl(ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
+    ColumnPtr executeImpl(const ColumnsWithTypeAndName & arguments, const DataTypePtr &, size_t /*input_rows_count*/) const override
     {
         const ColumnWithTypeAndName & arg_from = arguments[0];
         const ColumnWithTypeAndName & arg_charset_from = arguments[1];
