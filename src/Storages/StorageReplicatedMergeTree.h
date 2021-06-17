@@ -1,6 +1,6 @@
 #pragma once
 
-#include <ext/shared_ptr_helper.h>
+#include <common/shared_ptr_helper.h>
 #include <atomic>
 #include <pcg_random.hpp>
 #include <Storages/IStorage.h>
@@ -26,6 +26,7 @@
 #include <Interpreters/PartLog.h>
 #include <Common/randomSeed.h>
 #include <Common/ZooKeeper/ZooKeeper.h>
+#include <Common/Throttler.h>
 #include <Core/BackgroundSchedulePool.h>
 #include <Processors/Pipe.h>
 #include <Storages/MergeTree/BackgroundJobsExecutor.h>
@@ -79,9 +80,9 @@ namespace DB
   * as the time will take the time of creation the appropriate part on any of the replicas.
   */
 
-class StorageReplicatedMergeTree final : public ext::shared_ptr_helper<StorageReplicatedMergeTree>, public MergeTreeData
+class StorageReplicatedMergeTree final : public shared_ptr_helper<StorageReplicatedMergeTree>, public MergeTreeData
 {
-    friend struct ext::shared_ptr_helper<StorageReplicatedMergeTree>;
+    friend struct shared_ptr_helper<StorageReplicatedMergeTree>;
 public:
     void startup() override;
     void shutdown() override;
@@ -239,6 +240,18 @@ public:
     /// Get best replica having this partition on S3
     String getSharedDataReplica(const IMergeTreeDataPart & part) const;
 
+    /// Get throttler for replicated fetches
+    ThrottlerPtr getFetchesThrottler() const
+    {
+        return replicated_fetches_throttler;
+    }
+
+    /// Get throttler for replicated sends
+    ThrottlerPtr getSendsThrottler() const
+    {
+        return replicated_sends_throttler;
+    }
+
 private:
     /// Get a sequential consistent view of current parts.
     ReplicatedMergeTreeQuorumAddedParts::PartitionIdToMaxBlock getMaxAddedBlocks() const;
@@ -363,6 +376,11 @@ private:
 
     const size_t replicated_fetches_pool_size;
 
+    /// Throttlers used in DataPartsExchange to lower maximum fetch/sends
+    /// speed.
+    ThrottlerPtr replicated_fetches_throttler;
+    ThrottlerPtr replicated_sends_throttler;
+
     template <class Func>
     void foreachCommittedParts(Func && func, bool select_sequential_consistency) const;
 
@@ -420,8 +438,6 @@ private:
 
     /// Just removes part from ZooKeeper using previous method
     void removePartFromZooKeeper(const String & part_name);
-
-    void removePartsFromFilesystem(const DataPartsVector & parts);
 
     /// Quickly removes big set of parts from ZooKeeper (using async multi queries)
     void removePartsFromZooKeeper(zkutil::ZooKeeperPtr & zookeeper, const Strings & part_names,

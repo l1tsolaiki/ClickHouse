@@ -1,8 +1,5 @@
 #pragma once
 
-#include <ext/enumerate.h>
-#include <ext/collection_cast.h>
-#include <ext/range.h>
 #include <type_traits>
 
 #include <IO/WriteBufferFromVector.h>
@@ -1277,7 +1274,7 @@ public:
     static constexpr bool to_string_or_fixed_string = std::is_same_v<ToDataType, DataTypeFixedString> ||
                                                       std::is_same_v<ToDataType, DataTypeString>;
 
-    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionConvert>(); }
+    static FunctionPtr create(ContextPtr) { return std::make_shared<FunctionConvert>(); }
     static FunctionPtr create() { return std::make_shared<FunctionConvert>(); }
 
     String getName() const override
@@ -1592,7 +1589,7 @@ public:
 
     static constexpr bool to_datetime64 = std::is_same_v<ToDataType, DataTypeDateTime64>;
 
-    static FunctionPtr create(ContextConstPtr) { return std::make_shared<FunctionConvertFromString>(); }
+    static FunctionPtr create(ContextPtr) { return std::make_shared<FunctionConvertFromString>(); }
     static FunctionPtr create() { return std::make_shared<FunctionConvertFromString>(); }
 
     String getName() const override
@@ -1890,7 +1887,7 @@ struct ToDateMonotonicity
     static IFunction::Monotonicity get(const IDataType & type, const Field & left, const Field & right)
     {
         auto which = WhichDataType(type);
-        if (which.isDateOrDateTime() || which.isInt8() || which.isInt16() || which.isUInt8() || which.isUInt16())
+        if (which.isDate() || which.isDateTime() || which.isDateTime64() || which.isInt8() || which.isInt16() || which.isUInt8() || which.isUInt16())
             return {true, true, true};
         else if (
             (which.isUInt() && ((left.isNull() || left.get<UInt64>() < 0xFFFF) && (right.isNull() || right.get<UInt64>() >= 0xFFFF)))
@@ -2408,7 +2405,7 @@ private:
         UInt32 scale = to_type->getScale();
 
         WhichDataType which(type_index);
-        bool ok = which.isNativeInt() || which.isNativeUInt() || which.isDecimal() || which.isFloat() || which.isDateOrDateTime()
+        bool ok = which.isNativeInt() || which.isNativeUInt() || which.isDecimal() || which.isFloat() || which.isDate() || which.isDateTime() || which.isDateTime64()
             || which.isStringOrFixedString();
         if (!ok)
         {
@@ -2569,8 +2566,12 @@ private:
         element_wrappers.reserve(from_element_types.size());
 
         /// Create conversion wrapper for each element in tuple
-        for (const auto idx_type : ext::enumerate(from_element_types))
-            element_wrappers.push_back(prepareUnpackDictionaries(idx_type.second, to_element_types[idx_type.first]));
+        for (size_t i = 0; i < from_element_types.size(); ++i)
+        {
+            const DataTypePtr & from_element_type = from_element_types[i];
+            const DataTypePtr & to_element_type = to_element_types[i];
+            element_wrappers.push_back(prepareUnpackDictionaries(from_element_type, to_element_type));
+        }
 
         return element_wrappers;
     }
@@ -2816,7 +2817,7 @@ private:
 
                 if (nullable_col)
                 {
-                    for (const auto i : ext::range(0, size))
+                    for (size_t i = 0; i < size; ++i)
                     {
                         if (!nullable_col->isNullAt(i))
                             out_data[i] = result_type.getValue(col->getDataAt(i));
@@ -2826,7 +2827,7 @@ private:
                 }
                 else
                 {
-                    for (const auto i : ext::range(0, size))
+                    for (size_t i = 0; i < size; ++i)
                         out_data[i] = result_type.getValue(col->getDataAt(i));
                 }
 
@@ -3196,7 +3197,7 @@ public:
         ? accurate_cast_name
         : (cast_type == CastType::accurateOrNull ? accurate_cast_or_null_name : cast_name);
 
-    static FunctionOverloadResolverPtr create(ContextConstPtr context)
+    static FunctionOverloadResolverPtr create(ContextPtr context)
     {
         return createImpl(context->getSettingsRef().cast_keep_nullable);
     }
